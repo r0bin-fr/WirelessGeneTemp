@@ -70,43 +70,10 @@ int32_t temperatureCharacteristicMax;
 int32_t temperatureCharacteristicMin;
 int32_t temperatureCharacteristicCurr;
 int32_t batteryCharacteristic;
+int32_t accelXCharacteristics;
+int32_t accelYCharacteristics;
+int32_t accelZCharacteristics;
 int32_t thermometerService;
-
-//******************************
-// SECTION ACCELEROMETRE
-//******************************
-#include <Wire.h>
-#include <Adafruit_Sensor.h>
-#include <Adafruit_ADXL345_U.h>
-
-/* Assign a unique ID to this sensor at the same time */
-Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345); //I2C config
-//data from sensor
-sensors_event_t accelEvent;
-
-void setupAccel(void) 
-{
-  Serial.println("ADXL345 Accelerometer Calibration"); 
-  Serial.println("");
-  
-  /* Initialise the sensor */
-  if(!accel.begin())
-  {
-    /* There was a problem detecting the ADXL345 ... check your connections */
-    Serial.println("Ooops, no ADXL345 detected ... Check your wiring!");
-    while(1);
-  }
-  Serial.println("ADXL345 found and ready!");
-}
-
-void getAccel(void)
-{
-    /* Get a new sensor event */       
-    accel.getEvent(&accelEvent);
-    Serial.print("X: "); Serial.print(accelEvent.acceleration.x); Serial.print("  ");
-    Serial.print("Y: "); Serial.print(accelEvent.acceleration.y); Serial.print("  ");
-    Serial.print("Z: "); Serial.print(accelEvent.acceleration.z); Serial.print("  ");Serial.println("m/s^2 ");
-}
 
 //******************************
 // SECTION TEMPERATURE 
@@ -156,7 +123,10 @@ static union float_bytes tCelsius = { .value = 0.0 };
 static union float_bytes tCelsiusMin = { .value = 0.0 };
 static union float_bytes tCelsiusMax = { .value = 0.0 };
 static union float_bytes bPercent = { .value = 0.0 };
-  
+static union float_bytes aDegreeX = { .value = 0.0 };
+static union float_bytes aDegreeY = { .value = 0.0 };
+static union float_bytes aDegreeZ = { .value = 0.0 };
+
 float Tnow,Tmin,Tmax,Tlast = 0;
 float T_dif_now, T_dif_last = 0;
 int TminLoopCount, TmaxLoopCount = 0;
@@ -196,6 +166,51 @@ void updateTempCounters(float newtemp)
   Tlast = Tnow;
   T_dif_last = T_dif_now;
 }
+
+
+//******************************
+// SECTION ACCELEROMETRE
+//******************************
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_ADXL345_U.h>
+
+/* Assign a unique ID to this sensor at the same time */
+Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345); //I2C config
+//data from sensor
+sensors_event_t accelEvent;
+
+void setupAccel(void) 
+{
+  Serial.println("ADXL345 Accelerometer Calibration"); 
+  Serial.println("");
+  
+  /* Initialise the sensor */
+  if(!accel.begin())
+  {
+    /* There was a problem detecting the ADXL345 ... check your connections */
+    Serial.println("Ooops, no ADXL345 detected ... Check your wiring!");
+    while(1);
+  }
+  Serial.println("ADXL345 found and ready!");
+}
+
+void getAccel(void)
+{
+    // Get a new sensor event       
+    accel.getEvent(&accelEvent);
+    Serial.print("X: "); Serial.print(accelEvent.acceleration.x); Serial.print("  ");
+    Serial.print("Y: "); Serial.print(accelEvent.acceleration.y); Serial.print("  ");
+    Serial.print("Z: "); Serial.print(accelEvent.acceleration.z); Serial.print("  ");Serial.println("m/s^2 ");
+    //broadcast to Bluetooth
+    aDegreeX.value = accelEvent.acceleration.x;
+    aDegreeY.value = accelEvent.acceleration.y;
+    aDegreeZ.value = accelEvent.acceleration.z;
+    gatt.setChar(accelXCharacteristics, aDegreeX.bytes, sizeof(aDegreeX));
+    gatt.setChar(accelYCharacteristics, aDegreeY.bytes, sizeof(aDegreeY));
+    gatt.setChar(accelZCharacteristics, aDegreeZ.bytes, sizeof(aDegreeZ));
+}
+
 
 //******************************
 // SECTION BATTERIE
@@ -295,6 +310,21 @@ void setupBLE(void){
                                                      GATT_CHARS_PROPERTIES_READ | GATT_CHARS_PROPERTIES_NOTIFY,
                                                      sizeof(float), sizeof(float), BLE_DATATYPE_BYTEARRAY);
 
+  /* Accel 3-axes characteristic */
+  uint8_t accelCharacteristicUUID = 0x2225; 
+  accelXCharacteristics = gatt.addCharacteristic(accelCharacteristicUUID,
+                                                     GATT_CHARS_PROPERTIES_READ | GATT_CHARS_PROPERTIES_NOTIFY,
+                                                     sizeof(float), sizeof(float), BLE_DATATYPE_BYTEARRAY);
+  accelCharacteristicUUID = 0x2226; 
+  accelYCharacteristics = gatt.addCharacteristic(accelCharacteristicUUID,
+                                                     GATT_CHARS_PROPERTIES_READ | GATT_CHARS_PROPERTIES_NOTIFY,
+                                                     sizeof(float), sizeof(float), BLE_DATATYPE_BYTEARRAY);
+  accelCharacteristicUUID = 0x2227; 
+  accelZCharacteristics = gatt.addCharacteristic(accelCharacteristicUUID,
+                                                     GATT_CHARS_PROPERTIES_READ | GATT_CHARS_PROPERTIES_NOTIFY,
+                                                     sizeof(float), sizeof(float), BLE_DATATYPE_BYTEARRAY);
+
+
   /* Reset the device for the new service setting changes to take effect */
   Serial.print(F("Performing a SW reset (service changes require a reset): "));
   ble.reset();
@@ -324,8 +354,8 @@ void setupBLE(void){
 void setup(void)
 { 
 //*** uncomment to wait for the serial debug console ***
-  while (!Serial);  // required for Flora & Micro
-    delay(500);
+  //while (!Serial);  // required for Flora & Micro
+  //  delay(500);
 
   Serial.begin(115200);
   Serial.println(F("Adafruit Bluefruit --- Temperature sensor by Matt"));
